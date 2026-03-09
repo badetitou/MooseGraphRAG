@@ -1,8 +1,13 @@
 "
-I am a utility that takes as input a Moose Model and ouput `.parquet` file for [graphRAG](https://microsoft.github.io/graphrag/index/byog/)
+I am a utility that takes as input a Moose Model and ouput `.parquet` files.
+
+I export two files
+
+- `entities.parquet` that contains all the Nodes (including reified association)
+- `relationships.parquet` that contains the link between the Nodes
 "
 Class {
-	#name : 'MooseGraphRAG',
+	#name : 'MooseParquetExporter',
 	#superclass : 'Object',
 	#instVars : [
 		'model',
@@ -11,12 +16,13 @@ Class {
 		'parquetLibrary',
 		'listStringType'
 	],
-	#category : 'MooseGraphRAG',
-	#package : 'MooseGraphRAG'
+	#category : 'MooseGraphRAG-Parquet',
+	#package : 'MooseGraphRAG',
+	#tag : 'Parquet'
 }
 
 { #category : 'entities' }
-MooseGraphRAG >> buildEntitiesColumns [
+MooseParquetExporter >> buildEntitiesColumns [
 	"Builder by field"
 
 	| idBuilder titleBuilder descriptionBuilder idArray titleArray descriptionArray columns listBuilder listArray humanIdBuilder humanIdArray degreeBuilder degreeArray typeBuilder typeArray |
@@ -34,30 +40,31 @@ MooseGraphRAG >> buildEntitiesColumns [
 	"business logic here"
 
 	self model allModelEntities do: [ :entity | "we do not deal with association here"
-		arrowLibrary
-			garrow_string_array_builder: idBuilder
-			_append_string: entity mooseID printString
-			error: nil.
-		arrowLibrary
-			garrow_int64_array_builder: humanIdBuilder
-			_append_value: entity mooseID
-			error: nil.
-		arrowLibrary
-			garrow_string_array_builder: titleBuilder
-			_append_string: (self nameOf: entity)
-			error: nil.
-		typeBuilder append: entity class name.
-		arrowLibrary
-			garrow_string_array_builder: descriptionBuilder
-			_append_string: entity class name
-			error: nil.
-		arrowLibrary
-			garrow_list_array_builder_append_value: listBuilder
-			error: nil.
-		arrowLibrary
-			garrow_int64_array_builder: degreeBuilder
-			_append_value: 1
-			error: nil ].
+		entity isAssociation ifFalse: [
+			arrowLibrary
+				garrow_string_array_builder: idBuilder
+				_append_string: entity mooseID printString
+				error: nil.
+			arrowLibrary
+				garrow_int64_array_builder: humanIdBuilder
+				_append_value: entity mooseID
+				error: nil.
+			arrowLibrary
+				garrow_string_array_builder: titleBuilder
+				_append_string: (self nameOf: entity)
+				error: nil.
+			typeBuilder append: entity class name.
+			arrowLibrary
+				garrow_string_array_builder: descriptionBuilder
+				_append_string: entity class name
+				error: nil.
+			arrowLibrary
+				garrow_list_array_builder_append_value: listBuilder
+				error: nil.
+			arrowLibrary
+				garrow_int64_array_builder: degreeBuilder
+				_append_value: 1
+				error: nil ] ].
 
 	"end builder"
 	idArray := arrowLibrary
@@ -96,7 +103,7 @@ MooseGraphRAG >> buildEntitiesColumns [
 ]
 
 { #category : 'entities' }
-MooseGraphRAG >> buildEntitiesParquet [
+MooseParquetExporter >> buildEntitiesParquet [
 
 	| schema table columns writer |
 	schema := self prepareTableSchema.
@@ -125,7 +132,7 @@ MooseGraphRAG >> buildEntitiesParquet [
 ]
 
 { #category : 'relationships' }
-MooseGraphRAG >> buildRelationshipsColumns [
+MooseParquetExporter >> buildRelationshipsColumns [
 
 	| descriptionBuilder descriptionArray columns sourceBuilder targetBuilder weightBuilder sourceArray targetArray weightArray idBuilder idArray listBuilder listArray humanIdBuilder humanIdArray combinedDegreeBuilder combinedDegreeArray |
 	"create builder"
@@ -144,46 +151,89 @@ MooseGraphRAG >> buildRelationshipsColumns [
 	"business logic here"
 
 	self model allModelEntities do: [ :entity | "we do not deal with association here"
-		entity mooseDescription allComplexProperties withIndexDo: [
-			:complexProperty
-			:index |
-			complexProperty isRelation ifTrue: [
-				complexProperty isDerived ifFalse: [
-					| targets |
-					targets := complexProperty getFrom: entity.
-					targets := targets isCollection
-						           ifFalse: [ { targets } ]
-						           ifTrue: [ targets ].
-					targets do: [ :target |
-						| id |
-						id := ((entity mooseID + entity class currentID) printString
-						       , index printString) asInteger.
-						idBuilder append: id printString.
-						humanIdBuilder append: id.
-						sourceBuilder append: (self nameOf: entity).
-						targetBuilder append: (self nameOf: target).
-						descriptionBuilder append:
-							complexProperty name , ': ' , complexProperty comment.
-						weightBuilder append: 1.0.
-						arrowLibrary
-							garrow_list_array_builder_append_value: listBuilder
-							error: nil.
-						arrowLibrary
-							garrow_int64_array_builder: combinedDegreeBuilder
-							_append_value: 2
-							error: nil ] ] ] ] ].
+		entity isAssociation
+			ifFalse: [ "self halt.
+				arrowLibrary
+					garrow_string_array_builder: sourceBuilder
+					_append_string: entity source mooseID printString
+					error: nil.
+				arrowLibrary
+					garrow_string_array_builder: targetBuilder
+					_append_string: entity mooseName
+					error: nil.
+				arrowLibrary
+					garrow_string_array_builder: descriptionBuilder
+					_append_string: entity class name
+					error: nil.
+				arrowLibrary
+					garrow_float_array_builder: weightBuilder
+					_append_value: 1.0
+					error: nil"
+				 ]
+			ifTrue: [
+				| target |
+				target := entity target.
+				(target isCollection not or: [ target isNotEmpty ]) ifTrue: [
+					target isCollection ifTrue: [ target := target anyOne ].
+
+					arrowLibrary
+						garrow_string_array_builder: idBuilder
+						_append_string: entity mooseID printString
+						error: nil.
+					arrowLibrary
+						garrow_int64_array_builder: humanIdBuilder
+						_append_value: entity mooseID
+						error: nil.
+					arrowLibrary
+						garrow_string_array_builder: sourceBuilder
+						_append_string: (self nameOf: entity source)
+						error: nil.
+					arrowLibrary
+						garrow_string_array_builder: targetBuilder
+						_append_string: (self nameOf: target)
+						error: nil.
+					arrowLibrary
+						garrow_string_array_builder: descriptionBuilder
+						_append_string: entity class name
+						error: nil.
+					arrowLibrary
+						garrow_float_array_builder: weightBuilder
+						_append_value: 1.0
+						error: nil.
+					arrowLibrary
+						garrow_list_array_builder_append_value: listBuilder
+						error: nil.
+					arrowLibrary
+						garrow_int64_array_builder: combinedDegreeBuilder
+						_append_value: 2
+						error: nil ] ] ].
 
 	"end builder"
-	idArray := idBuilder finish.
-	humanIdArray := humanIdBuilder finish.
-	sourceArray := sourceBuilder finish.
-	targetArray := targetBuilder finish.
-	descriptionArray := descriptionBuilder finish.
-	weightArray := weightBuilder finish.
+	idArray := arrowLibrary
+		           garrow_array_builder_finish: idBuilder
+		           error: nil.
+	humanIdArray := arrowLibrary
+		                garrow_array_builder_finish: humanIdBuilder
+		                error: nil.
+	sourceArray := arrowLibrary
+		               garrow_array_builder_finish: sourceBuilder
+		               error: nil.
+	targetArray := arrowLibrary
+		               garrow_array_builder_finish: targetBuilder
+		               error: nil.
+	descriptionArray := arrowLibrary
+		                    garrow_array_builder_finish: descriptionBuilder
+		                    error: nil.
+	weightArray := arrowLibrary
+		               garrow_array_builder_finish: weightBuilder
+		               error: nil.
 	listArray := arrowLibrary
 		             garrow_array_builder_finish: listBuilder
 		             error: nil.
-	combinedDegreeArray := combinedDegreeBuilder finish.
+	combinedDegreeArray := arrowLibrary
+		                       garrow_array_builder_finish:
+		                       combinedDegreeBuilder
+		                       error: nil.
 
 	"have columns in my memory"
 	columns := nil.
@@ -199,7 +249,7 @@ MooseGraphRAG >> buildRelationshipsColumns [
 ]
 
 { #category : 'relationships' }
-MooseGraphRAG >> buildRelationshipsParquet [
+MooseParquetExporter >> buildRelationshipsParquet [
 
 	| schema table columns writer |
 	schema := self prepareRelationshipsTableSchema.
@@ -228,7 +278,7 @@ MooseGraphRAG >> buildRelationshipsParquet [
 ]
 
 { #category : 'initialization' }
-MooseGraphRAG >> initialize [
+MooseParquetExporter >> initialize [
 
 	super initialize.
 	arrowLibrary := PharoArrowLibrary uniqueInstance.
@@ -237,25 +287,25 @@ MooseGraphRAG >> initialize [
 ]
 
 { #category : 'accessing' }
-MooseGraphRAG >> model [
+MooseParquetExporter >> model [
 
 	^ model
 ]
 
 { #category : 'accessing' }
-MooseGraphRAG >> model: anObject [
+MooseParquetExporter >> model: anObject [
 
 	model := anObject
 ]
 
 { #category : 'accessing - name' }
-MooseGraphRAG >> nameOf: aMooseConcept [
+MooseParquetExporter >> nameOf: aMooseConcept [
 
 	^ aMooseConcept mooseName , '.' , aMooseConcept mooseID printString
 ]
 
 { #category : 'relationships' }
-MooseGraphRAG >> prepareRelationshipsTableSchema [
+MooseParquetExporter >> prepareRelationshipsTableSchema [
 	"I need id (int) title (string) description (string)"
 
 	| strType fields idField descriptionField schema floatType sourceField targetField weightField textUnitIdsField textUnitIdField intType humanIdField combinedDegreeField |
@@ -308,7 +358,7 @@ MooseGraphRAG >> prepareRelationshipsTableSchema [
 ]
 
 { #category : 'entities' }
-MooseGraphRAG >> prepareTableSchema [
+MooseParquetExporter >> prepareTableSchema [
 	"I need id (int) title (string) description (string)"
 
 	| strType fields idField titleField descriptionField schema textUnitIdsField textUnitIdField intType humanIdField degreeField typeField |

@@ -67,17 +67,20 @@ MooseParquetImporter >> importEntitiesRelationships [
 	startNodeArray := (table dataOfColumns: 1) chunk: 0.
 	endNodeArray := (table dataOfColumns: 2) chunk: 0.
 
-	0 to: table numberOfRows - 1 do: [ :index |
-		((entitiesMap at: (startNodeArray at: index)) mooseDescription
-			 propertyNamed: (typeArray at: index) asSymbol) isMultivalued
-			ifTrue: [
-				((entitiesMap at: (startNodeArray at: index)) perform:
-					 (typeArray at: index) asSymbol) add:
-					(entitiesMap at: (endNodeArray at: index)) ]
-			ifFalse: [
-				(entitiesMap at: (startNodeArray at: index))
-					perform: (typeArray at: index) asSymbol asMutator
-					with: (entitiesMap at: (endNodeArray at: index)) ] ]
+	FMShouldCheckForDuplicatedEntitiesInMultivalueLinks
+		value: false
+		during: [
+			0 to: table numberOfRows - 1 do: [ :index |
+				((entitiesMap at: (startNodeArray at: index)) mooseDescription
+					 propertyNamed: (typeArray at: index) asSymbol) isMultivalued
+					ifTrue: [
+						((entitiesMap at: (startNodeArray at: index)) perform:
+							 (typeArray at: index) asSymbol) add:
+							(entitiesMap at: (endNodeArray at: index)) ]
+					ifFalse: [
+						(entitiesMap at: (startNodeArray at: index))
+							perform: (typeArray at: index) asSymbol asMutator
+							with: (entitiesMap at: (endNodeArray at: index)) ] ] ]
 ]
 
 { #category : 'initialization' }

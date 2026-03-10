@@ -5,6 +5,15 @@ I export two files
 
 - `entities.parquet` that contains all the Nodes (including reified association)
 - `relationships.parquet` that contains the link between the Nodes
+
+## Generate a moose model
+
+```st
+exporter := MooseParquetExporter new.
+exporter model: MooseModel root anyOne.
+exporter export.
+
+```
 "
 Class {
 	#name : 'MooseParquetExporter',
